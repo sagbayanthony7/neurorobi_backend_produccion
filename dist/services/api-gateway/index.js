@@ -66,7 +66,7 @@ app.use('/api/telemetry', (req, res, next) => { req.url = req.originalUrl; telem
 app.use('/api/stats', (req, res, next) => { req.url = req.originalUrl; telemetryProxy(req, res, next); });
 // Health check for Gateway
 app.get('/health', (req, res) => {
-    res.json({ status: 'ok', service: 'API Gateway', activeServices: routingTable });
+    res.json({ status: 'ok', service: 'API Gateway', version: 'v2-base64-json', activeServices: routingTable });
 });
 // Create HTTP server (for WebSocket proxying)
 const httpServer = (0, http_1.createServer)(app);

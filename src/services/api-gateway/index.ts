@@ -69,7 +69,7 @@ app.use('/api/stats', (req, res, next) => { req.url = req.originalUrl; telemetry
 
 // Health check for Gateway
 app.get('/health', (req: Request, res: Response) => {
-  res.json({ status: 'ok', service: 'API Gateway', activeServices: routingTable });
+  res.json({ status: 'ok', service: 'API Gateway', version: 'v2-base64-json', activeServices: routingTable });
 });
 
 // Create HTTP server (for WebSocket proxying)
