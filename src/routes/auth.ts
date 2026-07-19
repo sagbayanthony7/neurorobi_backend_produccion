@@ -272,8 +272,9 @@ export async function seedInitialUser() {
         where: { email: user.email }
       });
 
+      const hashedPassword = bcrypt.hashSync(user.password, 10);
+
       if (!existing) {
-        const hashedPassword = bcrypt.hashSync(user.password, 10);
         await prisma.specialist.create({
           data: {
             email: user.email,
@@ -284,7 +285,16 @@ export async function seedInitialUser() {
         });
         console.log(`✅ Seeded user: ${user.name} (${user.role})`);
       } else {
-        console.log(`ℹ️  ${user.email} already exists.`);
+        // Always sync password to match seed values (fixes stale hashes from prior deployments)
+        if (existing.password !== hashedPassword) {
+          await prisma.specialist.update({
+            where: { email: user.email },
+            data: { password: hashedPassword }
+          });
+          console.log(`🔄 Updated password for: ${user.email}`);
+        } else {
+          console.log(`ℹ️  ${user.email} already exists and password is current.`);
+        }
       }
     }
   } catch (error) {
