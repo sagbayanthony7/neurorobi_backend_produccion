@@ -40,6 +40,7 @@ const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
 const patients_1 = __importDefault(require("../../routes/patients"));
 const service_utils_1 = require("../../shared/service-utils");
+const db_1 = require("../../shared/db");
 const dotenv = __importStar(require("dotenv"));
 dotenv.config();
 const app = (0, express_1.default)();
@@ -47,8 +48,21 @@ app.use((0, cors_1.default)());
 app.use(express_1.default.json({ limit: '10mb' }));
 app.use('/api/patients', patients_1.default);
 const PORT = process.env.PATIENT_PORT || 3003;
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
     console.log(`[Patient Service] Running on port ${PORT}`);
     (0, service_utils_1.registerService)('patient-service', Number(PORT));
+    // Clear broken /uploads/ image URLs (filesystem is ephemeral on Railway)
+    try {
+        const result = await db_1.prisma.patient.updateMany({
+            where: { profileImageUrl: { startsWith: '/uploads/' } },
+            data: { profileImageUrl: null }
+        });
+        if (result.count > 0) {
+            console.log(`[Patient Service] Cleared ${result.count} broken /uploads/ image URLs`);
+        }
+    }
+    catch (error) {
+        console.error('[Patient Service] Error clearing broken image URLs:', error);
+    }
 });
 //# sourceMappingURL=index.js.map
