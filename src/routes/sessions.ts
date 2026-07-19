@@ -18,11 +18,17 @@ const normalizeDeviceTypeForPrisma = (type: any): 'OSO' | 'PULSERA' => {
 
 function mapSessionResponse(session: any) {
   if (!session) return null;
+  const rawDate = session.date;
+  const isoDate = rawDate instanceof Date
+    ? rawDate.toISOString()
+    : typeof rawDate === 'number'
+    ? new Date(rawDate).toISOString()
+    : String(rawDate || new Date().toISOString());
   return {
     id: session.id,
     patientId: session.patientId,
     patientName: session.patientName,
-    date: session.date,
+    date: isoDate,
     durationSeconds: session.durationSeconds,
     specialistRole: session.specialistRole,
     specialistId: session.specialistId,
