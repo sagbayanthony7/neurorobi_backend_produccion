@@ -229,6 +229,15 @@ router.get('/specialists/:id', async (req, res) => {
 // ──────────────────────────────────────────
 async function seedInitialUser() {
     try {
+        // Clear broken /uploads/ image URLs (filesystem is ephemeral on Railway)
+        await db_1.prisma.specialist.updateMany({
+            where: { profileImageUrl: { startsWith: '/uploads/' } },
+            data: { profileImageUrl: null }
+        });
+        await db_1.prisma.patient.updateMany({
+            where: { profileImageUrl: { startsWith: '/uploads/' } },
+            data: { profileImageUrl: null }
+        });
         const usersToSeed = [
             { email: 'accionsocial@gmail.com', password: 'accionsocialcuenca', name: 'Acción Social Admin', role: 'ADMIN' },
             { email: 'psicologia@neurorobi.com', password: 'psicologia2026', name: 'Dra. María López', role: 'PSICOLOGIA_CLINICA' },
