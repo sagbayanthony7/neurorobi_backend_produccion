@@ -1,0 +1,100 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Patient {
+  id                 String            @id @default(uuid())
+  name               String
+  age                Int
+  diagnosis          String
+  status             String            @default("Listo para Consulta")
+  initialObservation String
+  profileImageUrl    String?
+  registeredAt       DateTime          @default(now())
+  sessions           ClinicalSession[]
+}
+
+enum DeviceType {
+  PULSERA
+  OSO
+}
+
+model ClinicalSession {
+  id                  String          @id @default(uuid())
+  patientId           String
+  patientName         String
+  date                DateTime        @default(now())
+  durationSeconds     Int
+  specialistRole      String
+  notes               String
+  deviceType          DeviceType      @default(PULSERA)
+
+  // Metrics (flattened)
+  avgHeartRate        Float           @default(0)
+  maxHeartRate        Float           @default(0)
+  minHeartRate        Float           @default(0)
+  avgHugForce         Float           @default(0)
+  maxHugForce         Float           @default(0)
+  comfortIndex        Float           @default(0)
+  bilateralSync       Float           @default(0)
+  motorFatigueScore   Float           @default(0)
+  stereotypicalCount  Float           @default(0)
+  calmStatePercentage Float           @default(0)
+  spikesCount         Float           @default(0)
+
+  // Relations
+  patient             Patient         @relation(fields: [patientId], references: [id])
+  specialistId        String
+  specialist          Specialist      @relation(fields: [specialistId], references: [id])
+  sensorHistory       SensorReading[]
+  spikesLog           SpikesLogItem[]
+}
+
+model SensorReading {
+  id          Int             @id @default(autoincrement())
+  sessionId   String
+  timestamp   String
+  deviceType  DeviceType      @default(PULSERA)
+  hugForce    Float
+  rotationX   Float
+  rotationY   Float
+  rotationZ   Float
+  heartRate   Float
+
+  session     ClinicalSession @relation(fields: [sessionId], references: [id])
+}
+
+model SpikesLogItem {
+  id          String          @id @default(uuid())
+  sessionId   String
+  timestamp   String
+  deviceType  DeviceType      @default(PULSERA)
+  type        String
+  value       Float
+  alertText   String
+  severity    String
+
+  session     ClinicalSession @relation(fields: [sessionId], references: [id])
+}
+
+enum Role {
+  PSICOLOGIA_CLINICA
+  EDUCACION_ESPECIAL
+  FISIOTERAPIA
+  ADMIN
+}
+
+model Specialist {
+  id        String            @id @default(uuid())
+  email     String            @unique
+  password  String
+  name      String
+  role            Role
+  profileImageUrl String?
+  sessions        ClinicalSession[]
+  createdAt       DateTime          @default(now())
+}

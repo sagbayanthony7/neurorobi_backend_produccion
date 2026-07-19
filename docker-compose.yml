@@ -1,0 +1,84 @@
+version: '3.8'
+
+services:
+  service-registry:
+    build: .
+    container_name: nr-registry
+    command: npx ts-node-dev src/services/service-registry/index.ts
+    ports:
+      - "4000:4000"
+    networks:
+      - neuro-network
+
+  auth-service:
+    build: .
+    container_name: nr-auth
+    command: npx ts-node-dev src/services/auth-service/index.ts
+    environment:
+      - HOSTNAME=nr-auth
+      - REGISTRY_URL=http://nr-registry:4000/register
+    ports:
+      - "3002:3002"
+    depends_on:
+      - service-registry
+    networks:
+      - neuro-network
+
+  patient-service:
+    build: .
+    container_name: nr-patient
+    command: npx ts-node-dev src/services/patient-service/index.ts
+    environment:
+      - HOSTNAME=nr-patient
+      - REGISTRY_URL=http://nr-registry:4000/register
+    ports:
+      - "3003:3003"
+    depends_on:
+      - service-registry
+    networks:
+      - neuro-network
+
+  session-service:
+    build: .
+    container_name: nr-session
+    command: npx ts-node-dev src/services/session-service/index.ts
+    environment:
+      - HOSTNAME=nr-session
+      - REGISTRY_URL=http://nr-registry:4000/register
+    ports:
+      - "3004:3004"
+    depends_on:
+      - service-registry
+    networks:
+      - neuro-network
+
+  telemetry-service:
+    build: .
+    container_name: nr-telemetry
+    command: npx ts-node-dev src/services/telemetry-service/index.ts
+    environment:
+      - HOSTNAME=nr-telemetry
+      - REGISTRY_URL=http://nr-registry:4000/register
+    ports:
+      - "3005:3005"
+    depends_on:
+      - service-registry
+    networks:
+      - neuro-network
+
+  api-gateway:
+    build: .
+    container_name: nr-gateway
+    command: npx ts-node-dev src/services/api-gateway/index.ts
+    environment:
+      - REGISTRY_URL=http://nr-registry:4000
+    ports:
+      - "3001:3001"
+    depends_on:
+      - service-registry
+    networks:
+      - neuro-network
+
+networks:
+  neuro-network:
+    driver: bridge
