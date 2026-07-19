@@ -1,6 +1,5 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../shared/db';
-import { handleUpload } from '../middleware/upload';
 import { SessionClient } from '../shared/clients/SessionClient';
 
 const router = Router();
@@ -63,13 +62,12 @@ router.get('/:id', async (req: Request, res: Response) => {
 // ──────────────────────────────────────────
 router.post('/', async (req: Request, res: Response) => {
   try {
-    await handleUpload('profileImage')(req, res);
-
-    const { name, age, diagnosis, initialObservation } = req.body as {
+    const { name, age, diagnosis, initialObservation, profileImageBase64 } = req.body as {
       name?: string;
       age?: number | string;
       diagnosis?: string;
       initialObservation?: string;
+      profileImageBase64?: string;
     };
 
     if (!name || typeof name !== 'string' || name.trim() === '') {
@@ -85,8 +83,6 @@ router.post('/', async (req: Request, res: Response) => {
       return;
     }
 
-    const profileImageUrl = req.body?.profileImageDataUri ?? null;
-
     const newPatient = await prisma.patient.create({
       data: {
         name: name.trim(),
@@ -94,7 +90,7 @@ router.post('/', async (req: Request, res: Response) => {
         diagnosis: diagnosis.trim(),
         initialObservation: initialObservation?.trim() ?? '',
         status: 'Listo para Consulta',
-        profileImageUrl
+        profileImageUrl: profileImageBase64 || null
       }
     });
 
@@ -110,14 +106,13 @@ router.post('/', async (req: Request, res: Response) => {
 // ──────────────────────────────────────────
 router.put('/:id', async (req: Request, res: Response) => {
   try {
-    await handleUpload('profileImage')(req, res);
-
     const id = String(req.params['id']);
-    const { name, age, diagnosis, initialObservation } = req.body as {
+    const { name, age, diagnosis, initialObservation, profileImageBase64 } = req.body as {
       name?: string;
       age?: number | string;
       diagnosis?: string;
       initialObservation?: string;
+      profileImageBase64?: string;
     };
 
     const existing = await prisma.patient.findUnique({ where: { id } });
@@ -126,8 +121,6 @@ router.put('/:id', async (req: Request, res: Response) => {
       return;
     }
 
-    const profileImageUrl = req.body?.profileImageDataUri ?? existing.profileImageUrl;
-
     const updatedPatient = await prisma.patient.update({
       where: { id },
       data: {
@@ -135,7 +128,7 @@ router.put('/:id', async (req: Request, res: Response) => {
         ...(age ? { age: Number(age) } : {}),
         ...(diagnosis ? { diagnosis: diagnosis.trim() } : {}),
         ...(initialObservation !== undefined ? { initialObservation: initialObservation.trim() } : {}),
-        profileImageUrl
+        ...(profileImageBase64 !== undefined ? { profileImageUrl: profileImageBase64 } : {})
       }
     });
 
@@ -194,10 +187,7 @@ router.delete('/:id', async (req: Request, res: Response) => {
       return;
     }
 
-    // Using Feign Client to delete sessions from Session Service
-    // This maintains separation of concerns - Patient Service doesn't touch Session tables
     await sessionClient.deleteByPatientId(id);
-    
     await prisma.patient.delete({ where: { id } });
 
     res.json({ message: 'Paciente y todas sus sesiones eliminados correctamente', id });

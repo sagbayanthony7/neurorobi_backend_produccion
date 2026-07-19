@@ -2,7 +2,6 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const db_1 = require("../shared/db");
-const upload_1 = require("../middleware/upload");
 const SessionClient_1 = require("../shared/clients/SessionClient");
 const router = (0, express_1.Router)();
 const sessionClient = new SessionClient_1.SessionClient();
@@ -61,8 +60,7 @@ router.get('/:id', async (req, res) => {
 // ──────────────────────────────────────────
 router.post('/', async (req, res) => {
     try {
-        await (0, upload_1.handleUpload)('profileImage')(req, res);
-        const { name, age, diagnosis, initialObservation } = req.body;
+        const { name, age, diagnosis, initialObservation, profileImageBase64 } = req.body;
         if (!name || typeof name !== 'string' || name.trim() === '') {
             res.status(400).json({ error: 'El nombre del paciente es requerido' });
             return;
@@ -75,7 +73,6 @@ router.post('/', async (req, res) => {
             res.status(400).json({ error: 'El diagnóstico es requerido' });
             return;
         }
-        const profileImageUrl = req.body?.profileImageDataUri ?? null;
         const newPatient = await db_1.prisma.patient.create({
             data: {
                 name: name.trim(),
@@ -83,7 +80,7 @@ router.post('/', async (req, res) => {
                 diagnosis: diagnosis.trim(),
                 initialObservation: initialObservation?.trim() ?? '',
                 status: 'Listo para Consulta',
-                profileImageUrl
+                profileImageUrl: profileImageBase64 || null
             }
         });
         res.status(201).json(newPatient);
@@ -98,15 +95,13 @@ router.post('/', async (req, res) => {
 // ──────────────────────────────────────────
 router.put('/:id', async (req, res) => {
     try {
-        await (0, upload_1.handleUpload)('profileImage')(req, res);
         const id = String(req.params['id']);
-        const { name, age, diagnosis, initialObservation } = req.body;
+        const { name, age, diagnosis, initialObservation, profileImageBase64 } = req.body;
         const existing = await db_1.prisma.patient.findUnique({ where: { id } });
         if (!existing) {
             res.status(404).json({ error: 'Paciente no encontrado' });
             return;
         }
-        const profileImageUrl = req.body?.profileImageDataUri ?? existing.profileImageUrl;
         const updatedPatient = await db_1.prisma.patient.update({
             where: { id },
             data: {
@@ -114,7 +109,7 @@ router.put('/:id', async (req, res) => {
                 ...(age ? { age: Number(age) } : {}),
                 ...(diagnosis ? { diagnosis: diagnosis.trim() } : {}),
                 ...(initialObservation !== undefined ? { initialObservation: initialObservation.trim() } : {}),
-                profileImageUrl
+                ...(profileImageBase64 !== undefined ? { profileImageUrl: profileImageBase64 } : {})
             }
         });
         res.json(updatedPatient);
@@ -165,8 +160,6 @@ router.delete('/:id', async (req, res) => {
             res.status(404).json({ error: 'Paciente no encontrado' });
             return;
         }
-        // Using Feign Client to delete sessions from Session Service
-        // This maintains separation of concerns - Patient Service doesn't touch Session tables
         await sessionClient.deleteByPatientId(id);
         await db_1.prisma.patient.delete({ where: { id } });
         res.json({ message: 'Paciente y todas sus sesiones eliminados correctamente', id });

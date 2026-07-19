@@ -15,7 +15,7 @@ const JWT_SECRET = process.env['JWT_SECRET'] || 'neurorobi-secret-key-2026';
 // ──────────────────────────────────────────
 router.post('/register', async (req, res) => {
     try {
-        const { email, password, name, role } = req.body;
+        const { email, password, name, role, profileImageBase64 } = req.body;
         if (!email || !password || !name || !role) {
             res.status(400).json({ error: 'Todos los campos son obligatorios' });
             return;
@@ -42,13 +42,15 @@ router.post('/register', async (req, res) => {
                 email: cleanEmail,
                 password: hashedPassword,
                 name: name.trim(),
-                role: role
+                role: role,
+                profileImageUrl: profileImageBase64 || null
             },
             select: {
                 id: true,
                 email: true,
                 name: true,
                 role: true,
+                profileImageUrl: true,
                 createdAt: true
             }
         });
@@ -90,8 +92,7 @@ router.post('/login', async (req, res) => {
             email: specialist.email,
             name: specialist.name,
             role: specialist.role
-        }, JWT_SECRET, { expiresIn: '30d' } // Long-lasting session for the clinical workstation
-        );
+        }, JWT_SECRET, { expiresIn: '30d' });
         res.json({
             token,
             user: {
@@ -108,16 +109,13 @@ router.post('/login', async (req, res) => {
         res.status(500).json({ error: 'Error al iniciar sesión' });
     }
 });
-const upload_1 = require("../middleware/upload");
 // ──────────────────────────────────────────
 // PUT /api/auth/profile/:id  → Update specialist profile
 // ──────────────────────────────────────────
 router.put('/profile/:id', async (req, res) => {
     try {
-        await (0, upload_1.handleUpload)('profileImage')(req, res);
         const id = String(req.params['id']);
-        const name = req.body?.name;
-        const password = req.body?.password;
+        const { name, password, profileImageBase64 } = req.body;
         const existing = await db_1.prisma.specialist.findUnique({ where: { id } });
         if (!existing) {
             res.status(404).json({ error: 'Especialista no encontrado' });
@@ -129,8 +127,8 @@ router.put('/profile/:id', async (req, res) => {
         if (password && password.trim() !== '') {
             dataToUpdate.password = bcryptjs_1.default.hashSync(password, 10);
         }
-        if (req.body?.profileImageDataUri) {
-            dataToUpdate.profileImageUrl = req.body.profileImageDataUri;
+        if (profileImageBase64) {
+            dataToUpdate.profileImageUrl = profileImageBase64;
         }
         const updated = await db_1.prisma.specialist.update({
             where: { id },
@@ -151,7 +149,7 @@ router.put('/profile/:id', async (req, res) => {
     }
 });
 // ──────────────────────────────────────────
-// GET /api/auth/specialists  → List all specialists (for inter-service communication)
+// GET /api/auth/specialists  → List all specialists
 // ──────────────────────────────────────────
 router.get('/specialists', async (_req, res) => {
     try {
@@ -171,7 +169,7 @@ router.get('/specialists', async (_req, res) => {
     }
 });
 // ──────────────────────────────────────────
-// GET /api/auth/specialists/by-email/:email  → Find specialist by email
+// GET /api/auth/specialists/by-email/:email
 // ──────────────────────────────────────────
 router.get('/specialists/by-email/:email', async (req, res) => {
     try {
@@ -197,7 +195,7 @@ router.get('/specialists/by-email/:email', async (req, res) => {
     }
 });
 // ──────────────────────────────────────────
-// GET /api/auth/specialists/:id  → Find specialist by ID
+// GET /api/auth/specialists/:id
 // ──────────────────────────────────────────
 router.get('/specialists/:id', async (req, res) => {
     try {
@@ -225,11 +223,10 @@ router.get('/specialists/:id', async (req, res) => {
     }
 });
 // ──────────────────────────────────────────
-// Database Seeder for Default User
+// Database Seeder
 // ──────────────────────────────────────────
 async function seedInitialUser() {
     try {
-        // Clear broken /uploads/ image URLs (filesystem is ephemeral on Railway)
         await db_1.prisma.specialist.updateMany({
             where: { profileImageUrl: { startsWith: '/uploads/' } },
             data: { profileImageUrl: null }
@@ -261,16 +258,12 @@ async function seedInitialUser() {
                 console.log(`✅ Seeded user: ${user.name} (${user.role})`);
             }
             else {
-                // Always sync password to match seed values (fixes stale hashes from prior deployments)
                 if (existing.password !== hashedPassword) {
                     await db_1.prisma.specialist.update({
                         where: { email: user.email },
                         data: { password: hashedPassword }
                     });
                     console.log(`🔄 Updated password for: ${user.email}`);
-                }
-                else {
-                    console.log(`ℹ️  ${user.email} already exists and password is current.`);
                 }
             }
         }
