@@ -9,7 +9,7 @@ COPY . .
 
 RUN npx prisma generate
 RUN npx prisma db push --skip-generate
-RUN npm run build
+RUN rm -rf dist && npm run build
 
 EXPOSE 3001 4000 3002 3003 3004 3005
 
