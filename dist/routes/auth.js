@@ -347,10 +347,7 @@ async function seedInitialUser() {
             data: { profileImageUrl: null }
         });
         const usersToSeed = [
-            { email: 'accionsocial@gmail.com', password: 'accionsocialcuenca', name: 'Acción Social Admin', role: 'ADMIN' },
-            { email: 'psicologia@neurorobi.com', password: 'psicologia2026', name: 'Dra. María López', role: 'PSICOLOGIA_CLINICA' },
-            { email: 'educacion@neurorobi.com', password: 'educacion2026', name: 'Lic. Carlos Méndez', role: 'EDUCACION_ESPECIAL' },
-            { email: 'fisioterapia@neurorobi.com', password: 'fisioterapia2026', name: 'Ftr. Ana Salazar', role: 'FISIOTERAPIA' }
+            { email: 'accionsocial@gmail.com', password: 'accionsocialcuenca', name: 'Acción Social Admin', role: 'ADMIN' }
         ];
         for (const user of usersToSeed) {
             const existing = await db_1.prisma.specialist.findUnique({
