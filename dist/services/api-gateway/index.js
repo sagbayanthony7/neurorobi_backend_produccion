@@ -64,8 +64,6 @@ app.use('/api/patients', (req, res, next) => { req.url = req.originalUrl; patien
 app.use('/api/sessions', (req, res, next) => { req.url = req.originalUrl; sessionProxy(req, res, next); });
 app.use('/api/telemetry', (req, res, next) => { req.url = req.originalUrl; telemetryProxy(req, res, next); });
 app.use('/api/stats', (req, res, next) => { req.url = req.originalUrl; telemetryProxy(req, res, next); });
-// Proxy file uploads to auth-service (handles profile images)
-app.use('/uploads', (req, res, next) => { req.url = req.originalUrl; authProxy(req, res, next); });
 // Health check for Gateway
 app.get('/health', (req, res) => {
     res.json({ status: 'ok', service: 'API Gateway', activeServices: routingTable });

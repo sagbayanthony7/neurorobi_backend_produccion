@@ -75,7 +75,7 @@ router.post('/', async (req, res) => {
             res.status(400).json({ error: 'El diagnóstico es requerido' });
             return;
         }
-        const profileImageUrl = req.file ? `/uploads/${req.file.filename}` : null;
+        const profileImageUrl = req.body?.profileImageDataUri ?? null;
         const newPatient = await db_1.prisma.patient.create({
             data: {
                 name: name.trim(),
@@ -106,7 +106,7 @@ router.put('/:id', async (req, res) => {
             res.status(404).json({ error: 'Paciente no encontrado' });
             return;
         }
-        const profileImageUrl = req.file ? `/uploads/${req.file.filename}` : existing.profileImageUrl;
+        const profileImageUrl = req.body?.profileImageDataUri ?? existing.profileImageUrl;
         const updatedPatient = await db_1.prisma.patient.update({
             where: { id },
             data: {

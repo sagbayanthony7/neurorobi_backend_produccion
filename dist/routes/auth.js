@@ -129,8 +129,8 @@ router.put('/profile/:id', async (req, res) => {
         if (password && password.trim() !== '') {
             dataToUpdate.password = bcryptjs_1.default.hashSync(password, 10);
         }
-        if (req.file) {
-            dataToUpdate.profileImageUrl = `/uploads/${req.file.filename}`;
+        if (req.body?.profileImageDataUri) {
+            dataToUpdate.profileImageUrl = req.body.profileImageDataUri;
         }
         const updated = await db_1.prisma.specialist.update({
             where: { id },

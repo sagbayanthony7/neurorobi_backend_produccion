@@ -41,12 +41,10 @@ const cors_1 = __importDefault(require("cors"));
 const auth_1 = __importStar(require("../../routes/auth"));
 const service_utils_1 = require("../../shared/service-utils");
 const dotenv = __importStar(require("dotenv"));
-const path_1 = __importDefault(require("path"));
 dotenv.config();
 const app = (0, express_1.default)();
 app.use((0, cors_1.default)());
-app.use(express_1.default.json());
-app.use('/uploads', express_1.default.static(path_1.default.join(__dirname, '../../../../../uploads')));
+app.use(express_1.default.json({ limit: '10mb' }));
 app.use('/api/auth', auth_1.default);
 const PORT = process.env.AUTH_PORT || 3002;
 app.listen(PORT, async () => {

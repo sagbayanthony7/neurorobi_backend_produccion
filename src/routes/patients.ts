@@ -85,7 +85,7 @@ router.post('/', async (req: Request, res: Response) => {
       return;
     }
 
-    const profileImageUrl = req.file ? `/uploads/${req.file.filename}` : null;
+    const profileImageUrl = req.body?.profileImageDataUri ?? null;
 
     const newPatient = await prisma.patient.create({
       data: {
@@ -126,7 +126,7 @@ router.put('/:id', async (req: Request, res: Response) => {
       return;
     }
 
-    const profileImageUrl = req.file ? `/uploads/${req.file.filename}` : existing.profileImageUrl;
+    const profileImageUrl = req.body?.profileImageDataUri ?? existing.profileImageUrl;
 
     const updatedPatient = await prisma.patient.update({
       where: { id },

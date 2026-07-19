@@ -1,31 +1,16 @@
 import multer from 'multer';
-import path from 'path';
-import fs from 'fs';
 import sharp from 'sharp';
 
-// Ensure uploads directory exists
-const uploadsDir = path.join(__dirname, '../../uploads');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
-
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => {
-    cb(null, uploadsDir);
-  },
-  filename: (_req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-    cb(null, file.fieldname + '-' + uniqueSuffix + '.webp');
-  }
-});
+// Use memory storage - no filesystem dependency (Railway ephemeral disk problem)
+const memoryStorage = multer.memoryStorage();
 
 export const upload = multer({
-  storage: storage,
+  storage: memoryStorage,
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     const allowed = /jpeg|jpg|png|gif|webp|avif|tiff/i;
     const mimeOk = allowed.test(file.mimetype);
-    const extOk = allowed.test(path.extname(file.originalname).toLowerCase());
+    const extOk = allowed.test(require('path').extname(file.originalname).toLowerCase());
     if (mimeOk || extOk) {
       cb(null, true);
     } else {
@@ -35,48 +20,38 @@ export const upload = multer({
 });
 
 /**
- * Convert uploaded image to .webp format for smaller file size and faster loading.
- * Saves directly to the uploads directory.
+ * Convert buffer to compressed webp base64 data URI.
+ * Returns a string like "data:image/webp;base64,..." that can be stored
+ * directly in the database and used as <img src> on the frontend.
  */
-export const convertToWebp = async (filePath: string): Promise<string> => {
-  const ext = path.extname(filePath);
-  if (ext === '.webp') return filePath;
-
-  const webpPath = filePath.replace(ext, '.webp');
-  try {
-    await sharp(filePath)
-      .webp({ quality: 80 })
-      .toFile(webpPath);
-
-    // Remove original file if conversion succeeded
-    if (fs.existsSync(webpPath) && filePath !== webpPath) {
-      fs.unlinkSync(filePath);
-    }
-    return webpPath;
-  } catch (error) {
-    console.error('[Upload] Error converting to webp:', error);
-    return filePath;
-  }
-};
+async function bufferToWebpDataUri(buffer: Buffer): Promise<string> {
+  const webpBuffer = await sharp(buffer)
+    .resize(400, 400, { fit: 'cover', withoutEnlargement: true })
+    .webp({ quality: 80 })
+    .toBuffer();
+  return `data:image/webp;base64,${webpBuffer.toString('base64')}`;
+}
 
 /**
  * Helper: wraps multer.single() for use in Express 5 async routes.
- * Also converts the uploaded image to .webp automatically.
+ * Converts the uploaded image to a webp base64 data URI stored on req.body[fieldName + 'Base64'].
+ * The file is NOT saved to disk.
  */
 export const handleUpload = (fieldName: string) => {
-  return async (req: any, res: any): Promise<void> => {
+  return async (req: any, _res: any): Promise<void> => {
     return new Promise((resolve, reject) => {
-      upload.single(fieldName)(req, res, async (err: any) => {
+      upload.single(fieldName)(req, _res, async (err: any) => {
         if (err) {
           reject(err);
         } else {
-          // Convert to webp if a file was uploaded
           if (req.file) {
-            const originalPath = req.file.path;
-            const webpPath = await convertToWebp(originalPath);
-            // Update the file info to reflect the webp path
-            req.file.path = webpPath;
-            req.file.filename = path.basename(webpPath);
+            try {
+              const dataUri = await bufferToWebpDataUri(req.file.buffer);
+              // Store the data URI in req.body so routes can read it
+              req.body[fieldName + 'DataUri'] = dataUri;
+            } catch (error) {
+              console.error('[Upload] Error converting to webp:', error);
+            }
           }
           resolve();
         }
