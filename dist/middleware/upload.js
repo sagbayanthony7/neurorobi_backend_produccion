@@ -30,8 +30,8 @@ exports.upload = (0, multer_1.default)({
  */
 async function bufferToWebpDataUri(buffer) {
     const webpBuffer = await (0, sharp_1.default)(buffer)
-        .resize(400, 400, { fit: 'cover', withoutEnlargement: true })
-        .webp({ quality: 80 })
+        .resize(200, 200, { fit: 'cover', withoutEnlargement: true })
+        .webp({ quality: 60 })
         .toBuffer();
     return `data:image/webp;base64,${webpBuffer.toString('base64')}`;
 }
