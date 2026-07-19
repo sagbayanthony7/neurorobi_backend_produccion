@@ -36,6 +36,15 @@ enum DeviceType {
   OSO
 }
 
+model Specialty {
+  id          String      @id @default(uuid())
+  name        String      @unique
+  color       String      @default("teal")
+  icon        String      @default("Heart")
+  createdAt   DateTime    @default(now())
+  specialists Specialist[]
+}
+
 model ClinicalSession {
   id                  String          @id @default(uuid())
   patientId           String
@@ -94,21 +103,16 @@ model SpikesLogItem {
   session     ClinicalSession @relation(fields: [sessionId], references: [id])
 }
 
-enum Role {
-  PSICOLOGIA_CLINICA
-  EDUCACION_ESPECIAL
-  FISIOTERAPIA
-  ADMIN
-}
-
 model Specialist {
-  id        String              @id @default(uuid())
-  email     String              @unique
-  password  String
-  name      String
-  role            Role
+  id              String              @id @default(uuid())
+  email           String              @unique
+  password        String
+  name            String
+  role            String              @default("THERAPIST")
+  specialtyId     String?
   profileImageUrl String?
   sessions        ClinicalSession[]
   assignments     PatientAssignment[]
-  createdAt       DateTime          @default(now())
+  specialty       Specialty?          @relation(fields: [specialtyId], references: [id])
+  createdAt       DateTime            @default(now())
 }
