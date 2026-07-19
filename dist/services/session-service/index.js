@@ -41,12 +41,10 @@ const cors_1 = __importDefault(require("cors"));
 const sessions_1 = __importDefault(require("../../routes/sessions"));
 const service_utils_1 = require("../../shared/service-utils");
 const dotenv = __importStar(require("dotenv"));
-const path_1 = __importDefault(require("path"));
 dotenv.config();
 const app = (0, express_1.default)();
 app.use((0, cors_1.default)());
-app.use(express_1.default.json({ limit: '5mb' }));
-app.use('/uploads', express_1.default.static(path_1.default.join(__dirname, '../../../../../uploads')));
+app.use(express_1.default.json({ limit: '10mb' }));
 app.use('/api/sessions', sessions_1.default);
 const PORT = process.env.SESSION_PORT || 3004;
 app.listen(PORT, () => {
