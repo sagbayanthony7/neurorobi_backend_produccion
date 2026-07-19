@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { prisma } from '../shared/db';
 import { PatientClient } from '../shared/clients/PatientClient';
 import { AuthClient } from '../shared/clients/AuthClient';
+import { authenticate, AuthRequest } from '../middleware/auth';
 
 const router = Router();
 const patientClient = new PatientClient();
@@ -59,14 +60,27 @@ function mapSessionResponse(session: any) {
 }
 
 // ──────────────────────────────────────────
-// GET /api/sessions  → All sessions (opt. filter by patientId)
+// GET /api/sessions  → All sessions (filtered by role, opt. filter by patientId)
 // ──────────────────────────────────────────
-router.get('/', async (req: Request, res: Response) => {
+router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     const patientId = req.query['patientId'] ? String(req.query['patientId']) : undefined;
+    const userId = req.user?.id;
+    const userRole = req.user?.role;
+
+    let whereCondition: any = patientId ? { patientId } : {};
+
+    if (userRole !== 'ADMIN' && userId) {
+      const assignedPatientIds = await prisma.patientAssignment.findMany({
+        where: { specialistId: userId },
+        select: { patientId: true }
+      });
+      const patientIds = assignedPatientIds.map(a => a.patientId);
+      whereCondition.patientId = { in: patientIds };
+    }
 
     const sessions = await prisma.clinicalSession.findMany({
-      where: patientId ? { patientId } : undefined,
+      where: whereCondition,
       include: {
         sensorHistory: true,
         spikesLog: true
@@ -84,9 +98,11 @@ router.get('/', async (req: Request, res: Response) => {
 // ──────────────────────────────────────────
 // GET /api/sessions/:id  → Single session with full data
 // ──────────────────────────────────────────
-router.get('/:id', async (req: Request, res: Response) => {
+router.get('/:id', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     const id = String(req.params['id']);
+    const userId = req.user?.id;
+    const userRole = req.user?.role;
 
     const session = await prisma.clinicalSession.findUnique({
       where: { id },
@@ -101,7 +117,16 @@ router.get('/:id', async (req: Request, res: Response) => {
       return;
     }
 
-    // Using Feign Client to get patient data from Patient Service
+    if (userRole !== 'ADMIN' && userId) {
+      const isAssigned = await prisma.patientAssignment.findUnique({
+        where: { patientId_specialistId: { patientId: session.patientId, specialistId: userId } }
+      });
+      if (!isAssigned) {
+        res.status(403).json({ error: 'No tienes acceso a esta sesión' });
+        return;
+      }
+    }
+
     const patient = await patientClient.findById(session.patientId);
     const sessionWithPatient = {
       ...session,
@@ -118,7 +143,7 @@ router.get('/:id', async (req: Request, res: Response) => {
 // ──────────────────────────────────────────
 // POST /api/sessions  → Save completed session
 // ──────────────────────────────────────────
-router.post('/', async (req: Request, res: Response) => {
+router.post('/', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     const {
       patientId,
@@ -153,9 +178,8 @@ router.post('/', async (req: Request, res: Response) => {
       return;
     }
 
-    let specialistId = bodySpecialistId;
+    let specialistId = bodySpecialistId || req.user?.id;
     if (!specialistId) {
-      // Using Feign Client to communicate with Auth Service
       const defaultSpecialist = await authClient.findSpecialistByEmail('accionsocial@gmail.com');
       if (defaultSpecialist) {
         specialistId = defaultSpecialist.id;
@@ -165,6 +189,16 @@ router.post('/', async (req: Request, res: Response) => {
     if (!specialistId) {
       res.status(400).json({ error: 'specialistId es requerido' });
       return;
+    }
+
+    if (req.user?.role !== 'ADMIN') {
+      const isAssigned = await prisma.patientAssignment.findUnique({
+        where: { patientId_specialistId: { patientId, specialistId } }
+      });
+      if (!isAssigned) {
+        res.status(403).json({ error: 'No tienes acceso para crear sesiones con este paciente' });
+        return;
+      }
     }
 
     // Using Feign Client to communicate with Patient Service
@@ -233,7 +267,7 @@ router.post('/', async (req: Request, res: Response) => {
 // ──────────────────────────────────────────
 // PATCH /api/sessions/:id/notes  → Update notes only
 // ──────────────────────────────────────────
-router.patch('/:id/notes', async (req: Request, res: Response) => {
+router.patch('/:id/notes', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     const id = String(req.params['id']);
     const { notes } = req.body as { notes?: string };
@@ -264,7 +298,7 @@ router.patch('/:id/notes', async (req: Request, res: Response) => {
 // ──────────────────────────────────────────
 // DELETE /api/sessions/:id  → Remove session and all related data
 // ──────────────────────────────────────────
-router.delete('/:id', async (req: Request, res: Response) => {
+router.delete('/:id', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     const id = String(req.params['id']);
 

@@ -7,15 +7,28 @@ datasource db {
 }
 
 model Patient {
-  id                 String            @id @default(uuid())
+  id                 String              @id @default(uuid())
   name               String
   age                Int
   diagnosis          String
-  status             String            @default("Listo para Consulta")
+  status             String              @default("Listo para Consulta")
   initialObservation String
   profileImageUrl    String?
-  registeredAt       DateTime          @default(now())
+  registeredAt       DateTime            @default(now())
   sessions           ClinicalSession[]
+  assignments        PatientAssignment[]
+}
+
+model PatientAssignment {
+  id              String     @id @default(uuid())
+  patientId       String
+  specialistId    String
+  assignedAt      DateTime   @default(now())
+  assignedBy      String?
+  patient         Patient    @relation(fields: [patientId], references: [id])
+  specialist      Specialist @relation(fields: [specialistId], references: [id])
+
+  @@unique([patientId, specialistId])
 }
 
 enum DeviceType {
@@ -89,12 +102,13 @@ enum Role {
 }
 
 model Specialist {
-  id        String            @id @default(uuid())
-  email     String            @unique
+  id        String              @id @default(uuid())
+  email     String              @unique
   password  String
   name      String
   role            Role
   profileImageUrl String?
   sessions        ClinicalSession[]
+  assignments     PatientAssignment[]
   createdAt       DateTime          @default(now())
 }

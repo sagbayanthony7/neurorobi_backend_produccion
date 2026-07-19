@@ -1,21 +1,60 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../shared/db';
 import { SessionClient } from '../shared/clients/SessionClient';
+import { authenticate, AuthRequest } from '../middleware/auth';
 
 const router = Router();
 const sessionClient = new SessionClient();
 
 // ──────────────────────────────────────────
-// GET /api/patients  → List all patients
+// GET /api/patients  → List patients (filtered by role)
 // ──────────────────────────────────────────
-router.get('/', async (_req: Request, res: Response) => {
+router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const patients = await prisma.patient.findMany({
-      orderBy: { registeredAt: 'desc' },
-      include: {
-        _count: { select: { sessions: true } }
-      }
-    });
+    const userId = req.user?.id;
+    const userRole = req.user?.role;
+
+    if (!userId) {
+      res.status(401).json({ error: 'Usuario no autenticado' });
+      return;
+    }
+
+    let patients;
+    if (userRole === 'ADMIN') {
+      patients = await prisma.patient.findMany({
+        orderBy: { registeredAt: 'desc' },
+        include: {
+          _count: { select: { sessions: true } },
+          assignments: {
+            select: {
+              specialistId: true,
+              assignedAt: true
+            }
+          }
+        }
+      });
+    } else {
+      const assignedPatientIds = await prisma.patientAssignment.findMany({
+        where: { specialistId: userId },
+        select: { patientId: true }
+      });
+      const patientIds = assignedPatientIds.map(a => a.patientId);
+
+      patients = await prisma.patient.findMany({
+        where: { id: { in: patientIds } },
+        orderBy: { registeredAt: 'desc' },
+        include: {
+          _count: { select: { sessions: true } },
+          assignments: {
+            select: {
+              specialistId: true,
+              assignedAt: true
+            }
+          }
+        }
+      });
+    }
+
     res.json(patients);
   } catch (error) {
     console.error('[GET /patients]', error);
@@ -24,11 +63,58 @@ router.get('/', async (_req: Request, res: Response) => {
 });
 
 // ──────────────────────────────────────────
+// GET /api/patients/search  → Search patients by name/diagnosis
+// ──────────────────────────────────────────
+router.get('/search', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const { q } = req.query as { q?: string };
+    const userId = req.user?.id;
+    const userRole = req.user?.role;
+
+    if (!userId) {
+      res.status(401).json({ error: 'Usuario no autenticado' });
+      return;
+    }
+
+    if (!q || q.trim().length < 2) {
+      res.status(400).json({ error: 'La búsqueda requiere al menos 2 caracteres' });
+      return;
+    }
+
+    const searchTerm = q.trim().toLowerCase();
+
+    const patients = await prisma.patient.findMany({
+      where: {
+        OR: [
+          { name: { contains: searchTerm, mode: 'insensitive' } },
+          { diagnosis: { contains: searchTerm, mode: 'insensitive' } }
+        ]
+      },
+      include: {
+        _count: { select: { sessions: true } },
+        assignments: {
+          select: { specialistId: true }
+        }
+      },
+      orderBy: { registeredAt: 'desc' }
+    });
+
+    res.json(patients);
+  } catch (error) {
+    console.error('[GET /patients/search]', error);
+    res.status(500).json({ error: 'Error al buscar pacientes' });
+  }
+});
+
+// ──────────────────────────────────────────
 // GET /api/patients/:id  → Single patient + sessions
 // ──────────────────────────────────────────
-router.get('/:id', async (req: Request, res: Response) => {
+router.get('/:id', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     const id = String(req.params['id']);
+    const userId = req.user?.id;
+    const userRole = req.user?.role;
+
     const patient = await prisma.patient.findUnique({
       where: { id },
       include: {
@@ -41,6 +127,16 @@ router.get('/:id', async (req: Request, res: Response) => {
             notes: true
           },
           orderBy: { date: 'desc' }
+        },
+        assignments: {
+          select: {
+            id: true,
+            specialistId: true,
+            assignedAt: true,
+            specialist: {
+              select: { id: true, name: true, role: true }
+            }
+          }
         }
       }
     });
@@ -48,6 +144,14 @@ router.get('/:id', async (req: Request, res: Response) => {
     if (!patient) {
       res.status(404).json({ error: 'Paciente no encontrado' });
       return;
+    }
+
+    if (userRole !== 'ADMIN' && userId) {
+      const isAssigned = patient.assignments.some(a => a.specialistId === userId);
+      if (!isAssigned) {
+        res.status(403).json({ error: 'No tienes acceso a este paciente' });
+        return;
+      }
     }
 
     res.json(patient);
@@ -175,11 +279,13 @@ router.put('/:id/status', async (req: Request, res: Response) => {
 });
 
 // ──────────────────────────────────────────
-// DELETE /api/patients/:id  → Delete patient + all sessions
+// DELETE /api/patients/:id  → Delete patient + all sessions + assignments
 // ──────────────────────────────────────────
-router.delete('/:id', async (req: Request, res: Response) => {
+router.delete('/:id', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     const id = String(req.params['id']);
+    const userId = req.user?.id;
+    const userRole = req.user?.role;
 
     const existing = await prisma.patient.findUnique({ where: { id } });
     if (!existing) {
@@ -187,6 +293,17 @@ router.delete('/:id', async (req: Request, res: Response) => {
       return;
     }
 
+    if (userRole !== 'ADMIN' && userId) {
+      const isAssigned = await prisma.patientAssignment.findUnique({
+        where: { patientId_specialistId: { patientId: id, specialistId: userId } }
+      });
+      if (!isAssigned) {
+        res.status(403).json({ error: 'No tienes permiso para eliminar este paciente' });
+        return;
+      }
+    }
+
+    await prisma.patientAssignment.deleteMany({ where: { patientId: id } });
     await sessionClient.deleteByPatientId(id);
     await prisma.patient.delete({ where: { id } });
 
@@ -194,6 +311,97 @@ router.delete('/:id', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('[DELETE /patients/:id]', error);
     res.status(500).json({ error: 'Error al eliminar paciente' });
+  }
+});
+
+// ──────────────────────────────────────────
+// POST /api/patients/:id/assign  → Assign patient to specialist
+// ──────────────────────────────────────────
+router.post('/:id/assign', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const patientId = String(req.params['id']);
+    const { specialistId } = req.body as { specialistId?: string };
+    const userId = req.user?.id;
+    const userRole = req.user?.role;
+
+    if (!specialistId) {
+      res.status(400).json({ error: 'specialistId es requerido' });
+      return;
+    }
+
+    if (userRole !== 'ADMIN' && userId !== specialistId) {
+      res.status(403).json({ error: 'Solo puedes asignarte pacientes a ti mismo' });
+      return;
+    }
+
+    const patient = await prisma.patient.findUnique({ where: { id: patientId } });
+    if (!patient) {
+      res.status(404).json({ error: 'Paciente no encontrado' });
+      return;
+    }
+
+    const specialist = await prisma.specialist.findUnique({ where: { id: specialistId } });
+    if (!specialist) {
+      res.status(404).json({ error: 'Especialista no encontrado' });
+      return;
+    }
+
+    const existingAssignment = await prisma.patientAssignment.findUnique({
+      where: { patientId_specialistId: { patientId, specialistId } }
+    });
+
+    if (existingAssignment) {
+      res.status(400).json({ error: 'El paciente ya está asignado a este especialista' });
+      return;
+    }
+
+    const assignment = await prisma.patientAssignment.create({
+      data: {
+        patientId,
+        specialistId,
+        assignedBy: userId
+      }
+    });
+
+    res.status(201).json({ message: 'Paciente asignado correctamente', assignment });
+  } catch (error) {
+    console.error('[POST /patients/:id/assign]', error);
+    res.status(500).json({ error: 'Error al asignar paciente' });
+  }
+});
+
+// ──────────────────────────────────────────
+// DELETE /api/patients/:id/assign/:specialistId  → Unassign patient from specialist
+// ──────────────────────────────────────────
+router.delete('/:id/assign/:specialistId', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const patientId = String(req.params['id']);
+    const specialistId = String(req.params['specialistId']);
+    const userId = req.user?.id;
+    const userRole = req.user?.role;
+
+    if (userRole !== 'ADMIN' && userId !== specialistId) {
+      res.status(403).json({ error: 'Solo puedes desasignarte pacientes a ti mismo' });
+      return;
+    }
+
+    const assignment = await prisma.patientAssignment.findUnique({
+      where: { patientId_specialistId: { patientId, specialistId } }
+    });
+
+    if (!assignment) {
+      res.status(404).json({ error: 'Asignación no encontrada' });
+      return;
+    }
+
+    await prisma.patientAssignment.delete({
+      where: { patientId_specialistId: { patientId, specialistId } }
+    });
+
+    res.json({ message: 'Paciente desasignado correctamente' });
+  } catch (error) {
+    console.error('[DELETE /patients/:id/assign/:specialistId]', error);
+    res.status(500).json({ error: 'Error al desasignar paciente' });
   }
 });
 

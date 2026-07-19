@@ -8,6 +8,7 @@ const express_1 = require("express");
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const db_1 = require("../shared/db");
+const auth_1 = require("../middleware/auth");
 const router = (0, express_1.Router)();
 const JWT_SECRET = process.env['JWT_SECRET'] || 'neurorobi-secret-key-2026';
 // ──────────────────────────────────────────
@@ -171,7 +172,7 @@ router.get('/specialists', async (_req, res) => {
 // ──────────────────────────────────────────
 // GET /api/auth/specialists/by-email/:email
 // ──────────────────────────────────────────
-router.get('/specialists/by-email/:email', async (req, res) => {
+router.get('/specialists/by-email/:email', auth_1.authenticate, async (req, res) => {
     try {
         const email = String(req.params['email']).toLowerCase().trim();
         const specialist = await db_1.prisma.specialist.findUnique({
@@ -220,6 +221,116 @@ router.get('/specialists/:id', async (req, res) => {
     catch (error) {
         console.error('[GET /auth/specialists/:id]', error);
         res.status(500).json({ error: 'Error al obtener especialista' });
+    }
+});
+// ──────────────────────────────────────────
+// PUT /api/auth/specialists/:id  → Admin: update specialist
+// ──────────────────────────────────────────
+router.put('/specialists/:id', auth_1.authenticate, auth_1.requireAdmin, async (req, res) => {
+    try {
+        const id = String(req.params['id']);
+        const { name, email, role, password } = req.body;
+        const existing = await db_1.prisma.specialist.findUnique({ where: { id } });
+        if (!existing) {
+            res.status(404).json({ error: 'Especialista no encontrado' });
+            return;
+        }
+        const dataToUpdate = {};
+        if (name && name.trim() !== '')
+            dataToUpdate.name = name.trim();
+        if (email) {
+            const cleanEmail = email.toLowerCase().trim();
+            if (cleanEmail !== existing.email) {
+                const emailTaken = await db_1.prisma.specialist.findUnique({ where: { email: cleanEmail } });
+                if (emailTaken) {
+                    res.status(400).json({ error: 'El correo electrónico ya está en uso' });
+                    return;
+                }
+                dataToUpdate.email = cleanEmail;
+            }
+        }
+        if (role) {
+            const validRoles = ['PSICOLOGIA_CLINICA', 'EDUCACION_ESPECIAL', 'FISIOTERAPIA', 'ADMIN'];
+            if (!validRoles.includes(role)) {
+                res.status(400).json({ error: 'Rol inválido' });
+                return;
+            }
+            dataToUpdate.role = role;
+        }
+        if (password && password.trim() !== '') {
+            dataToUpdate.password = bcryptjs_1.default.hashSync(password, 10);
+        }
+        const updated = await db_1.prisma.specialist.update({
+            where: { id },
+            data: dataToUpdate,
+            select: {
+                id: true,
+                email: true,
+                name: true,
+                role: true,
+                profileImageUrl: true,
+                createdAt: true
+            }
+        });
+        res.json(updated);
+    }
+    catch (error) {
+        console.error('[PUT /auth/specialists/:id]', error);
+        res.status(500).json({ error: 'Error al actualizar especialista' });
+    }
+});
+// ──────────────────────────────────────────
+// DELETE /api/auth/specialists/:id  → Admin: delete specialist
+// ──────────────────────────────────────────
+router.delete('/specialists/:id', auth_1.authenticate, auth_1.requireAdmin, async (req, res) => {
+    try {
+        const id = String(req.params['id']);
+        const existing = await db_1.prisma.specialist.findUnique({ where: { id } });
+        if (!existing) {
+            res.status(404).json({ error: 'Especialista no encontrado' });
+            return;
+        }
+        if (existing.role === 'ADMIN') {
+            const adminCount = await db_1.prisma.specialist.count({ where: { role: 'ADMIN' } });
+            if (adminCount <= 1) {
+                res.status(400).json({ error: 'No se puede eliminar el último administrador' });
+                return;
+            }
+        }
+        await db_1.prisma.patientAssignment.deleteMany({ where: { specialistId: id } });
+        await db_1.prisma.specialist.delete({ where: { id } });
+        res.json({ message: 'Especialista eliminado correctamente', id });
+    }
+    catch (error) {
+        console.error('[DELETE /auth/specialists/:id]', error);
+        res.status(500).json({ error: 'Error al eliminar especialista' });
+    }
+});
+// ──────────────────────────────────────────
+// GET /api/auth/specialists/:id/stats  → Admin: get specialist stats
+// ──────────────────────────────────────────
+router.get('/specialists/:id/stats', auth_1.authenticate, auth_1.requireAdmin, async (req, res) => {
+    try {
+        const id = String(req.params['id']);
+        const specialist = await db_1.prisma.specialist.findUnique({ where: { id } });
+        if (!specialist) {
+            res.status(404).json({ error: 'Especialista no encontrado' });
+            return;
+        }
+        const assignmentCount = await db_1.prisma.patientAssignment.count({ where: { specialistId: id } });
+        const sessionCount = await db_1.prisma.clinicalSession.count({ where: { specialistId: id } });
+        res.json({
+            specialistId: id,
+            name: specialist.name,
+            email: specialist.email,
+            role: specialist.role,
+            assignedPatients: assignmentCount,
+            totalSessions: sessionCount
+        });
+    }
+    catch (error) {
+        console.error('[GET /auth/specialists/:id/stats]', error);
+        res.status(500).json({ error: 'Error al obtener estadísticas' });
     }
 });
 // ──────────────────────────────────────────

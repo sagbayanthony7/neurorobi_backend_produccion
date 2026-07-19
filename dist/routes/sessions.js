@@ -4,6 +4,7 @@ const express_1 = require("express");
 const db_1 = require("../shared/db");
 const PatientClient_1 = require("../shared/clients/PatientClient");
 const AuthClient_1 = require("../shared/clients/AuthClient");
+const auth_1 = require("../middleware/auth");
 const router = (0, express_1.Router)();
 const patientClient = new PatientClient_1.PatientClient();
 const authClient = new AuthClient_1.AuthClient();
@@ -17,11 +18,17 @@ const normalizeDeviceTypeForPrisma = (type) => {
 function mapSessionResponse(session) {
     if (!session)
         return null;
+    const rawDate = session.date;
+    const isoDate = rawDate instanceof Date
+        ? rawDate.toISOString()
+        : typeof rawDate === 'number'
+            ? new Date(rawDate).toISOString()
+            : String(rawDate || new Date().toISOString());
     return {
         id: session.id,
         patientId: session.patientId,
         patientName: session.patientName,
-        date: session.date,
+        date: isoDate,
         durationSeconds: session.durationSeconds,
         specialistRole: session.specialistRole,
         specialistId: session.specialistId,
@@ -51,13 +58,24 @@ function mapSessionResponse(session) {
     };
 }
 // ──────────────────────────────────────────
-// GET /api/sessions  → All sessions (opt. filter by patientId)
+// GET /api/sessions  → All sessions (filtered by role, opt. filter by patientId)
 // ──────────────────────────────────────────
-router.get('/', async (req, res) => {
+router.get('/', auth_1.authenticate, async (req, res) => {
     try {
         const patientId = req.query['patientId'] ? String(req.query['patientId']) : undefined;
+        const userId = req.user?.id;
+        const userRole = req.user?.role;
+        let whereCondition = patientId ? { patientId } : {};
+        if (userRole !== 'ADMIN' && userId) {
+            const assignedPatientIds = await db_1.prisma.patientAssignment.findMany({
+                where: { specialistId: userId },
+                select: { patientId: true }
+            });
+            const patientIds = assignedPatientIds.map(a => a.patientId);
+            whereCondition.patientId = { in: patientIds };
+        }
         const sessions = await db_1.prisma.clinicalSession.findMany({
-            where: patientId ? { patientId } : undefined,
+            where: whereCondition,
             include: {
                 sensorHistory: true,
                 spikesLog: true
@@ -74,9 +92,11 @@ router.get('/', async (req, res) => {
 // ──────────────────────────────────────────
 // GET /api/sessions/:id  → Single session with full data
 // ──────────────────────────────────────────
-router.get('/:id', async (req, res) => {
+router.get('/:id', auth_1.authenticate, async (req, res) => {
     try {
         const id = String(req.params['id']);
+        const userId = req.user?.id;
+        const userRole = req.user?.role;
         const session = await db_1.prisma.clinicalSession.findUnique({
             where: { id },
             include: {
@@ -88,7 +108,15 @@ router.get('/:id', async (req, res) => {
             res.status(404).json({ error: 'Sesión no encontrada' });
             return;
         }
-        // Using Feign Client to get patient data from Patient Service
+        if (userRole !== 'ADMIN' && userId) {
+            const isAssigned = await db_1.prisma.patientAssignment.findUnique({
+                where: { patientId_specialistId: { patientId: session.patientId, specialistId: userId } }
+            });
+            if (!isAssigned) {
+                res.status(403).json({ error: 'No tienes acceso a esta sesión' });
+                return;
+            }
+        }
         const patient = await patientClient.findById(session.patientId);
         const sessionWithPatient = {
             ...session,
@@ -104,7 +132,7 @@ router.get('/:id', async (req, res) => {
 // ──────────────────────────────────────────
 // POST /api/sessions  → Save completed session
 // ──────────────────────────────────────────
-router.post('/', async (req, res) => {
+router.post('/', auth_1.authenticate, async (req, res) => {
     try {
         const { patientId, patientName, durationSeconds, specialistRole, specialistId: bodySpecialistId, notes, deviceType, metrics, sensorHistory, spikesLog } = req.body;
         if (!patientId || typeof patientId !== 'string') {
@@ -115,9 +143,8 @@ router.post('/', async (req, res) => {
             res.status(400).json({ error: 'metrics es requerido' });
             return;
         }
-        let specialistId = bodySpecialistId;
+        let specialistId = bodySpecialistId || req.user?.id;
         if (!specialistId) {
-            // Using Feign Client to communicate with Auth Service
             const defaultSpecialist = await authClient.findSpecialistByEmail('accionsocial@gmail.com');
             if (defaultSpecialist) {
                 specialistId = defaultSpecialist.id;
@@ -126,6 +153,15 @@ router.post('/', async (req, res) => {
         if (!specialistId) {
             res.status(400).json({ error: 'specialistId es requerido' });
             return;
+        }
+        if (req.user?.role !== 'ADMIN') {
+            const isAssigned = await db_1.prisma.patientAssignment.findUnique({
+                where: { patientId_specialistId: { patientId, specialistId } }
+            });
+            if (!isAssigned) {
+                res.status(403).json({ error: 'No tienes acceso para crear sesiones con este paciente' });
+                return;
+            }
         }
         // Using Feign Client to communicate with Patient Service
         const patient = await patientClient.findById(patientId);
@@ -188,7 +224,7 @@ router.post('/', async (req, res) => {
 // ──────────────────────────────────────────
 // PATCH /api/sessions/:id/notes  → Update notes only
 // ──────────────────────────────────────────
-router.patch('/:id/notes', async (req, res) => {
+router.patch('/:id/notes', auth_1.authenticate, async (req, res) => {
     try {
         const id = String(req.params['id']);
         const { notes } = req.body;
@@ -215,7 +251,7 @@ router.patch('/:id/notes', async (req, res) => {
 // ──────────────────────────────────────────
 // DELETE /api/sessions/:id  → Remove session and all related data
 // ──────────────────────────────────────────
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', auth_1.authenticate, async (req, res) => {
     try {
         const id = String(req.params['id']);
         const existing = await db_1.prisma.clinicalSession.findUnique({ where: { id } });
