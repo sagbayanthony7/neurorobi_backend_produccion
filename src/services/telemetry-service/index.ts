@@ -66,7 +66,7 @@ app.get('/api/stats', async (_req: Request, res: Response) => {
 app.post('/api/telemetry', (req: Request, res: Response) => {
   const rawType = String(req.body.deviceType || 'pulsera').toLowerCase();
   const deviceType: DeviceType = rawType === 'oso' ? 'oso' : 'pulsera';
-  const { hugForce, rotationX, rotationY, rotationZ, heartRate, switch1, switch2, shakeIntensity } = req.body;
+  const { hugForce, rotationX, rotationY, rotationZ, heartRate, switch1, switch2, shakeIntensity, temperatureC } = req.body;
 
   // Mark device as connected and update timestamp
   lastTelemetryTime[deviceType] = Date.now();
@@ -98,7 +98,8 @@ app.post('/api/telemetry', (req: Request, res: Response) => {
     heartRate: hRate,
     switch1: sw1,
     switch2: sw2,
-    shakeIntensity: shake
+    shakeIntensity: shake,
+    temperatureC: typeof temperatureC === 'undefined' ? -1 : Number(temperatureC) || 0
   };
 
   const targetPatientId = devicePatientMap[deviceType];
