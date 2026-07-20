@@ -54,11 +54,30 @@ const dynamicProxy = (serviceName: string): RequestHandler => {
   } as any);
 };
 
+// Socket.IO needs long-polling HTTP route WITHOUT the 8s timeout
+const socketIoProxy = createProxyMiddleware({
+  router: () => {
+    if (!routingTable['telemetry-service']) return '';
+    return routingTable['telemetry-service'];
+  },
+  changeOrigin: true,
+  pathFilter: '/socket.io',
+  onError: (err: any, req: any, res: any) => {
+    console.error('[Gateway] Socket.IO HTTP proxy error:', err.message);
+    if (!res.headersSent) {
+      res.status(502).json({ error: 'Socket.IO service unavailable' });
+    }
+  }
+} as any);
+
 // Proxy instances (created once)
 const authProxy = dynamicProxy('auth-service');
 const patientProxy = dynamicProxy('patient-service');
 const sessionProxy = dynamicProxy('session-service');
 const telemetryProxy = dynamicProxy('telemetry-service');
+
+// Socket.IO HTTP route (must be before other routes)
+app.use('/socket.io', socketIoProxy);
 
 // Map routes to microservices
 app.use('/api/auth', (req, res, next) => { req.url = req.originalUrl; authProxy(req, res, next); });
