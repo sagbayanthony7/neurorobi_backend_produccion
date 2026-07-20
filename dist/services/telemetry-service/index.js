@@ -84,7 +84,7 @@ app.get('/api/stats', async (_req, res) => {
 app.post('/api/telemetry', (req, res) => {
     const rawType = String(req.body.deviceType || 'pulsera').toLowerCase();
     const deviceType = rawType === 'oso' ? 'oso' : 'pulsera';
-    const { hugForce, rotationX, rotationY, rotationZ, heartRate, switch1, switch2, shakeIntensity } = req.body;
+    const { hugForce, rotationX, rotationY, rotationZ, heartRate, switch1, switch2, shakeIntensity, temperatureC } = req.body;
     // Mark device as connected and update timestamp
     lastTelemetryTime[deviceType] = Date.now();
     if (!deviceConnections[deviceType]) {
@@ -112,7 +112,8 @@ app.post('/api/telemetry', (req, res) => {
         heartRate: hRate,
         switch1: sw1,
         switch2: sw2,
-        shakeIntensity: shake
+        shakeIntensity: shake,
+        temperatureC: typeof temperatureC === 'undefined' ? -1 : Number(temperatureC) || 0
     };
     const targetPatientId = devicePatientMap[deviceType];
     if (targetPatientId) {
@@ -209,9 +210,6 @@ io.on('connection', (socket) => {
     socket.on('disconnect', async () => {
         console.log(`[Socket] Client disconnected: ${socket.id}`);
         await cleanupPatientStream(socket);
-    });
-    socket.on('disconnect', () => {
-        console.log(`[Socket] Client disconnected: ${socket.id}`);
     });
 });
 const PORT = process.env.TELEMETRY_PORT || 3005;

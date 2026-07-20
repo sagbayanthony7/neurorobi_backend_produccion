@@ -212,10 +212,6 @@ io.on('connection', (socket) => {
     console.log(`[Socket] Client disconnected: ${socket.id}`);
     await cleanupPatientStream(socket);
   });
-
-  socket.on('disconnect', () => {
-    console.log(`[Socket] Client disconnected: ${socket.id}`);
-  });
 });
 
 const PORT = process.env.TELEMETRY_PORT || 3005;

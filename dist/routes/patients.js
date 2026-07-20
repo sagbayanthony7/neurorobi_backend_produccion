@@ -2,10 +2,8 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const db_1 = require("../shared/db");
-const SessionClient_1 = require("../shared/clients/SessionClient");
 const auth_1 = require("../middleware/auth");
 const router = (0, express_1.Router)();
-const sessionClient = new SessionClient_1.SessionClient();
 // ──────────────────────────────────────────
 // GET /api/patients  → List patients (filtered by role)
 // ──────────────────────────────────────────
@@ -152,9 +150,15 @@ router.get('/:id', auth_1.authenticate, async (req, res) => {
 // ──────────────────────────────────────────
 // POST /api/patients  → Register new patient
 // ──────────────────────────────────────────
-router.post('/', async (req, res) => {
+router.post('/', auth_1.authenticate, async (req, res) => {
     try {
-        const { name, age, diagnosis, initialObservation, profileImageBase64 } = req.body;
+        const { name, age, diagnosis, initialObservation, profileImageBase64, specialistId } = req.body;
+        const userId = req.user?.id;
+        const userRole = req.user?.role;
+        if (!userId) {
+            res.status(401).json({ error: 'Usuario no autenticado' });
+            return;
+        }
         if (!name || typeof name !== 'string' || name.trim() === '') {
             res.status(400).json({ error: 'El nombre del paciente es requerido' });
             return;
@@ -167,6 +171,25 @@ router.post('/', async (req, res) => {
             res.status(400).json({ error: 'El diagnóstico es requerido' });
             return;
         }
+        // Determine which specialist gets the patient
+        let assignToSpecialistId;
+        if (userRole === 'ADMIN') {
+            // Admin must specify a specialistId
+            if (!specialistId || typeof specialistId !== 'string') {
+                res.status(400).json({ error: 'Debes asignar el paciente a un especialista' });
+                return;
+            }
+            const specialist = await db_1.prisma.specialist.findUnique({ where: { id: specialistId } });
+            if (!specialist) {
+                res.status(404).json({ error: 'Especialista no encontrado' });
+                return;
+            }
+            assignToSpecialistId = specialistId;
+        }
+        else {
+            // Specialist auto-assigns to themselves
+            assignToSpecialistId = userId;
+        }
         const newPatient = await db_1.prisma.patient.create({
             data: {
                 name: name.trim(),
@@ -174,7 +197,18 @@ router.post('/', async (req, res) => {
                 diagnosis: diagnosis.trim(),
                 initialObservation: initialObservation?.trim() ?? '',
                 status: 'Listo para Consulta',
-                profileImageUrl: profileImageBase64 || null
+                profileImageUrl: profileImageBase64 || null,
+                assignments: {
+                    create: {
+                        specialistId: assignToSpecialistId,
+                        assignedBy: userId
+                    }
+                }
+            },
+            include: {
+                assignments: {
+                    select: { specialistId: true, assignedAt: true }
+                }
             }
         });
         res.status(201).json(newPatient);
@@ -266,7 +300,7 @@ router.delete('/:id', auth_1.authenticate, async (req, res) => {
             }
         }
         await db_1.prisma.patientAssignment.deleteMany({ where: { patientId: id } });
-        await sessionClient.deleteByPatientId(id);
+        await db_1.prisma.clinicalSession.deleteMany({ where: { patientId: id } });
         await db_1.prisma.patient.delete({ where: { id } });
         res.json({ message: 'Paciente y todas sus sesiones eliminados correctamente', id });
     }
