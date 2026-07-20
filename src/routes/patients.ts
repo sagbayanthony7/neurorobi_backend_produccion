@@ -164,15 +164,24 @@ router.get('/:id', authenticate, async (req: AuthRequest, res: Response) => {
 // ──────────────────────────────────────────
 // POST /api/patients  → Register new patient
 // ──────────────────────────────────────────
-router.post('/', async (req: Request, res: Response) => {
+router.post('/', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const { name, age, diagnosis, initialObservation, profileImageBase64 } = req.body as {
+    const { name, age, diagnosis, initialObservation, profileImageBase64, specialistId } = req.body as {
       name?: string;
       age?: number | string;
       diagnosis?: string;
       initialObservation?: string;
       profileImageBase64?: string;
+      specialistId?: string;
     };
+
+    const userId = req.user?.id;
+    const userRole = req.user?.role;
+
+    if (!userId) {
+      res.status(401).json({ error: 'Usuario no autenticado' });
+      return;
+    }
 
     if (!name || typeof name !== 'string' || name.trim() === '') {
       res.status(400).json({ error: 'El nombre del paciente es requerido' });
@@ -187,6 +196,26 @@ router.post('/', async (req: Request, res: Response) => {
       return;
     }
 
+    // Determine which specialist gets the patient
+    let assignToSpecialistId: string;
+
+    if (userRole === 'ADMIN') {
+      // Admin must specify a specialistId
+      if (!specialistId || typeof specialistId !== 'string') {
+        res.status(400).json({ error: 'Debes asignar el paciente a un especialista' });
+        return;
+      }
+      const specialist = await prisma.specialist.findUnique({ where: { id: specialistId } });
+      if (!specialist) {
+        res.status(404).json({ error: 'Especialista no encontrado' });
+        return;
+      }
+      assignToSpecialistId = specialistId;
+    } else {
+      // Specialist auto-assigns to themselves
+      assignToSpecialistId = userId;
+    }
+
     const newPatient = await prisma.patient.create({
       data: {
         name: name.trim(),
@@ -194,7 +223,18 @@ router.post('/', async (req: Request, res: Response) => {
         diagnosis: diagnosis.trim(),
         initialObservation: initialObservation?.trim() ?? '',
         status: 'Listo para Consulta',
-        profileImageUrl: profileImageBase64 || null
+        profileImageUrl: profileImageBase64 || null,
+        assignments: {
+          create: {
+            specialistId: assignToSpecialistId,
+            assignedBy: userId
+          }
+        }
+      },
+      include: {
+        assignments: {
+          select: { specialistId: true, assignedAt: true }
+        }
       }
     });
 
