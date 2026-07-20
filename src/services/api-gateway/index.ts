@@ -61,7 +61,6 @@ const socketIoProxy = createProxyMiddleware({
     return routingTable['telemetry-service'];
   },
   changeOrigin: true,
-  pathFilter: '/socket.io',
   onError: (err: any, req: any, res: any) => {
     console.error('[Gateway] Socket.IO HTTP proxy error:', err.message);
     if (!res.headersSent) {
@@ -77,7 +76,8 @@ const sessionProxy = dynamicProxy('session-service');
 const telemetryProxy = dynamicProxy('telemetry-service');
 
 // Socket.IO HTTP route (must be before other routes)
-app.use('/socket.io', socketIoProxy);
+// Restore full path like other routes — Express strips '/socket.io' prefix
+app.use('/socket.io', (req, res, next) => { req.url = req.originalUrl; socketIoProxy(req, res, next); });
 
 // Map routes to microservices
 app.use('/api/auth', (req, res, next) => { req.url = req.originalUrl; authProxy(req, res, next); });
