@@ -1,10 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../shared/db';
-import { SessionClient } from '../shared/clients/SessionClient';
 import { authenticate, AuthRequest } from '../middleware/auth';
 
 const router = Router();
-const sessionClient = new SessionClient();
 
 // ──────────────────────────────────────────
 // GET /api/patients  → List patients (filtered by role)
@@ -344,7 +342,7 @@ router.delete('/:id', authenticate, async (req: AuthRequest, res: Response) => {
     }
 
     await prisma.patientAssignment.deleteMany({ where: { patientId: id } });
-    await sessionClient.deleteByPatientId(id);
+    await prisma.clinicalSession.deleteMany({ where: { patientId: id } });
     await prisma.patient.delete({ where: { id } });
 
     res.json({ message: 'Paciente y todas sus sesiones eliminados correctamente', id });
