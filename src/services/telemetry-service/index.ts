@@ -122,38 +122,45 @@ app.post('/api/telemetry', (req: Request, res: Response) => {
   }
 
   // Check thresholds for spikes
-  const rotMag = Math.round(Math.sqrt(rotX * rotX + rotY * rotY + rotZ * rotZ));
+  // IMPORTANT: -999 is a sentinel value sent by the pulsera when there is no gyro.
+  // We must NOT compute rotation magnitude from sentinel values — it produces false ~1730°/s alerts.
+  const hasValidRotation = rotX !== -999 && rotY !== -999 && rotZ !== -999;
+  const rotMag = hasValidRotation
+    ? Math.round(Math.sqrt(rotX * rotX + rotY * rotY + rotZ * rotZ))
+    : 0;
 
-  if (hRate > 120) {
+  // Only trigger heart rate spike if it's a real reading (not the -1 sentinel for "no finger")
+  if (hRate > 0 && hRate !== -1 && hRate > 120) {
     io.emit('spike-triggered', {
       id: `spk-real-hr-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       deviceType,
       timestamp: nowStr,
-      type: 'Frecuencia Cardíaca',
+      type: 'Frecuencia Card\u00edaca',
       value: hRate,
-      alertText: `Taquicardia transitoria detectada: ${hRate} lpm. Paciente bajo desregulación autonómica.`,
+      alertText: `Taquicardia transitoria detectada: ${hRate} lpm. Paciente bajo desregulaci\u00f3n auton\u00f3mica.`,
       severity: 'critical'
     });
   }
-  if (hForce > 80) {
+  if (hForce > 0 && hForce > 80) {
     io.emit('spike-triggered', {
       id: `spk-real-press-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       deviceType,
       timestamp: nowStr,
-      type: 'Presión',
+      type: 'Presi\u00f3n',
       value: hForce,
-      alertText: `Abrazo Afectivo de Alta Intensidad: ${hForce}% de presión registrado.`,
+      alertText: `Abrazo Afectivo de Alta Intensidad: ${hForce}% de presi\u00f3n registrado.`,
       severity: 'warning'
     });
   }
-  if (rotMag > 130) {
+  // Only trigger motion spike if rotation data is real (not sentinel -999) and exceeds threshold
+  if (hasValidRotation && rotMag > 130) {
     io.emit('spike-triggered', {
       id: `spk-real-rot-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       deviceType,
       timestamp: nowStr,
-      type: 'Cinemática',
+      type: 'Cinem\u00e1tica',
       value: rotMag,
-      alertText: `Crisis de Agitación Motora: Rotación acelerada de ${rotMag}°/s.`,
+      alertText: `Crisis de Agitaci\u00f3n Motora: Rotaci\u00f3n acelerada de ${rotMag}\u00b0/s.`,
       severity: 'warning'
     });
   }
