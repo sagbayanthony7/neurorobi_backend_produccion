@@ -127,7 +127,7 @@ router.get('/:id', authenticate, async (req: AuthRequest, res: Response) => {
       }
     }
 
-    const patient = await patientClient.findById(session.patientId);
+    const patient = await prisma.patient.findUnique({ where: { id: session.patientId } });
     const sessionWithPatient = {
       ...session,
       patient: patient ? { id: patient.id, name: patient.name, age: patient.age, diagnosis: patient.diagnosis } : null
@@ -201,8 +201,7 @@ router.post('/', authenticate, async (req: AuthRequest, res: Response) => {
       }
     }
 
-    // Using Feign Client to communicate with Patient Service
-    const patient = await patientClient.findById(patientId);
+    const patient = await prisma.patient.findUnique({ where: { id: patientId } });
     if (!patient) {
       res.status(404).json({ error: 'Paciente no encontrado' });
       return;
