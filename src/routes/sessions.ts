@@ -232,6 +232,7 @@ router.post('/', authenticate, async (req: AuthRequest, res: Response) => {
         sensorHistory: {
           create: safeSensorHistory.map((s) => ({
             timestamp: String(s['timestamp'] ?? ''),
+            deviceType: normalizeDeviceTypeForPrisma(s['deviceType'] ?? deviceType),
             hugForce:  Number(s['hugForce'])  || 0,
             rotationX: Number(s['rotationX']) || 0,
             rotationY: Number(s['rotationY']) || 0,
@@ -242,8 +243,9 @@ router.post('/', authenticate, async (req: AuthRequest, res: Response) => {
 
         spikesLog: {
           create: safeSpikesLog.map((sp) => ({
-            ...(sp['id'] && typeof sp['id'] === 'string' ? { id: sp['id'] } : {}),
+            // No pasamos el id temporal no-UUID del cliente para evitar errores de sintaxis UUID en PostgreSQL
             timestamp: String(sp['timestamp'] ?? ''),
+            deviceType: normalizeDeviceTypeForPrisma(sp['deviceType'] ?? deviceType),
             type:      String(sp['type']      ?? ''),
             value:     Number(sp['value'])    || 0,
             alertText: String(sp['alertText'] ?? ''),
