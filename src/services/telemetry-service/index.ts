@@ -80,9 +80,32 @@ app.post('/api/telemetry', (req: Request, res: Response) => {
 
   // Mark device as connected and update timestamp
   lastTelemetryTime[deviceType] = Date.now();
-  if (!deviceConnections[deviceType]) {
-    deviceConnections[deviceType] = true;
-    console.log(`[Telemetry] ${deviceType.toUpperCase()} connected and sending data via HTTP POST`);
+  
+  if (deviceType === 'pulsera') {
+    // La pulsera SOLO se considera conectada y utilizable si:
+    // 1. Hay un dedo colocado con lectura de ritmo cardiaco (heartRate > 0 y != -1)
+    // 2. Hay lectura de temperatura valida (temperatureC > 30)
+    const hRateVal = Number(heartRate) || 0;
+    const tempVal = Number(temperatureC) || 0;
+    const tieneLecturasValidas = hRateVal > 0 && hRateVal !== -1 && tempVal > 30;
+    
+    if (tieneLecturasValidas) {
+      if (!deviceConnections[deviceType]) {
+        deviceConnections[deviceType] = true;
+        console.log(`[Telemetry] PULSERA lista: lectura de pulso y temperatura activa`);
+      }
+    } else {
+      if (deviceConnections[deviceType]) {
+        deviceConnections[deviceType] = false;
+        console.log(`[Telemetry] PULSERA no lista: esperando lecturas estables del paciente`);
+      }
+    }
+  } else {
+    // Para el oso, basta con que este enviando telemetria
+    if (!deviceConnections[deviceType]) {
+      deviceConnections[deviceType] = true;
+      console.log(`[Telemetry] ${deviceType.toUpperCase()} conectado y transmitiendo`);
+    }
   }
 
   const nowStr = new Date().toLocaleTimeString([], {
