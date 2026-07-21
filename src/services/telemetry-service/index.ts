@@ -62,10 +62,32 @@ app.get('/api/stats', async (_req: Request, res: Response) => {
   }
 });
 
+const lastPulseraBpm = { value: -1 };
+const lastPulseraTemp = { value: 0 };
+
 app.get('/api/telemetry/status', (_req: Request, res: Response) => {
+  const ahora = Date.now();
+  const pulseraActiva = (ahora - lastTelemetryTime['pulsera'] < 5000); // Si ha enviado algo en los últimos 5s
+  
+  let pulseraState: 'disconnected' | 'waiting_sensors' | 'ready' = 'disconnected';
+  
+  if (pulseraActiva) {
+    // Si la pulsera está transmitiendo, verificar si las lecturas de los sensores son válidas
+    const tieneLecturasValidas = lastPulseraBpm.value > 0 && lastPulseraBpm.value !== -1 && lastPulseraTemp.value > 30;
+    if (tieneLecturasValidas) {
+      pulseraState = 'ready';
+    } else {
+      pulseraState = 'waiting_sensors';
+    }
+  }
+
   res.json({
     oso: deviceConnections['oso'] || false,
-    pulsera: deviceConnections['pulsera'] || false,
+    // Para compatibilidad hacia atrás:
+    pulsera: pulseraState === 'ready',
+    pulseraState: pulseraState,
+    pulseraBpm: lastPulseraBpm.value,
+    pulseraTemp: lastPulseraTemp.value,
     lastHeartbeatOso: lastTelemetryTime['oso'],
     lastHeartbeatPulsera: lastTelemetryTime['pulsera']
   });
@@ -87,6 +109,10 @@ app.post('/api/telemetry', (req: Request, res: Response) => {
     // 2. Hay lectura de temperatura valida (temperatureC > 30)
     const hRateVal = Number(heartRate) || 0;
     const tempVal = Number(temperatureC) || 0;
+    
+    lastPulseraBpm.value = hRateVal;
+    lastPulseraTemp.value = tempVal;
+    
     const tieneLecturasValidas = hRateVal > 0 && hRateVal !== -1 && tempVal > 30;
     
     if (tieneLecturasValidas) {
