@@ -62,6 +62,16 @@ app.get('/api/stats', async (_req: Request, res: Response) => {
   }
 });
 
+app.get('/api/telemetry/status', (_req: Request, res: Response) => {
+  res.json({
+    oso: deviceConnections['oso'] || false,
+    pulsera: deviceConnections['pulsera'] || false,
+    lastHeartbeatOso: lastTelemetryTime['oso'],
+    lastHeartbeatPulsera: lastTelemetryTime['pulsera']
+  });
+});
+
+
 // HTTP POST endpoint for ESP32 telemetry
 app.post('/api/telemetry', (req: Request, res: Response) => {
   const rawType = String(req.body.deviceType || 'pulsera').toLowerCase();
