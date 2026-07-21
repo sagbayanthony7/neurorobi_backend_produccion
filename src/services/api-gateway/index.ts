@@ -32,7 +32,7 @@ setInterval(updateRoutingTable, 2000);
 updateRoutingTable();
 
 // Dynamic proxy middleware generator with error handling and timeout
-const dynamicProxy = (serviceName: string): RequestHandler => {
+const dynamicProxy = (serviceName: string, timeoutMs: number = 8000): RequestHandler => {
   return createProxyMiddleware({
     router: () => {
       if (!routingTable[serviceName]) {
@@ -42,7 +42,7 @@ const dynamicProxy = (serviceName: string): RequestHandler => {
     },
     changeOrigin: true,
     proxyReqOptDecorator: (proxyReqOpts: any) => {
-      proxyReqOpts.timeout = 8000;
+      proxyReqOpts.timeout = timeoutMs;
       return proxyReqOpts;
     },
     onError: (err: any, req: any, res: any) => {
@@ -72,7 +72,7 @@ const socketIoProxy = createProxyMiddleware({
 // Proxy instances (created once)
 const authProxy = dynamicProxy('auth-service');
 const patientProxy = dynamicProxy('patient-service');
-const sessionProxy = dynamicProxy('session-service');
+const sessionProxy = dynamicProxy('session-service', 30000); // 30s timeout for heavy DB writes
 const telemetryProxy = dynamicProxy('telemetry-service');
 
 // Socket.IO HTTP route (must be before other routes)

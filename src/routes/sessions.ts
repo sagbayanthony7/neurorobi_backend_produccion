@@ -211,6 +211,9 @@ router.post('/', authenticate, async (req: AuthRequest, res: Response) => {
     const safeSensorHistory = Array.isArray(sensorHistory) ? sensorHistory : [];
     const safeSpikesLog = Array.isArray(spikesLog) ? spikesLog : [];
 
+    // Limitar el historial de sensor a las últimas 500 lecturas para evitar timeouts de base de datos
+    const limitedSensorHistory = safeSensorHistory.slice(-500);
+
     const newSession = await prisma.clinicalSession.create({
       data: {
         patientId,
@@ -220,6 +223,9 @@ router.post('/', authenticate, async (req: AuthRequest, res: Response) => {
         specialistRole: specialistRole ?? 'PSICOLOGIA_CLINICA',
         notes: notes ?? '',
         deviceType: normalizeDeviceTypeForPrisma(deviceType),
+        avgHeartRate:        Number(metrics['avgHeartRate'])        || 0,
+        maxHeartRate:        Number(metrics['maxHeartRate'])        || 0,
+        minHeartRate:        Number(metrics['minHeartRate'])        || 0,
         avgHugForce:         Number(metrics['avgHugForce'])         || 0,
         maxHugForce:         Number(metrics['maxHugForce'])         || 0,
         comfortIndex:        Number(metrics['comfortIndex'])        || 0,
@@ -230,7 +236,7 @@ router.post('/', authenticate, async (req: AuthRequest, res: Response) => {
         spikesCount:         Number(metrics['spikesCount'])         || 0,
 
         sensorHistory: {
-          create: safeSensorHistory.map((s) => ({
+          create: limitedSensorHistory.map((s) => ({
             timestamp: String(s['timestamp'] ?? ''),
             deviceType: normalizeDeviceTypeForPrisma(s['deviceType'] ?? deviceType),
             hugForce:  Number(s['hugForce'])  || 0,
@@ -243,7 +249,6 @@ router.post('/', authenticate, async (req: AuthRequest, res: Response) => {
 
         spikesLog: {
           create: safeSpikesLog.map((sp) => ({
-            // No pasamos el id temporal no-UUID del cliente para evitar errores de sintaxis UUID en PostgreSQL
             timestamp: String(sp['timestamp'] ?? ''),
             deviceType: normalizeDeviceTypeForPrisma(sp['deviceType'] ?? deviceType),
             type:      String(sp['type']      ?? ''),
@@ -260,9 +265,11 @@ router.post('/', authenticate, async (req: AuthRequest, res: Response) => {
     });
 
     res.status(201).json(mapSessionResponse(newSession));
-  } catch (error) {
-    console.error('[POST /sessions]', error);
-    res.status(500).json({ error: 'Error al guardar sesión' });
+  } catch (error: any) {
+    console.error('[POST /sessions] Error completo:', error?.message || error);
+    if (error?.code) console.error('[POST /sessions] Prisma code:', error.code);
+    if (error?.meta) console.error('[POST /sessions] Prisma meta:', error.meta);
+    res.status(500).json({ error: 'Error al guardar sesión', detail: error?.message || 'Unknown error' });
   }
 });
 
